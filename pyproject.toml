@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-og-card-service = "og_card_service.cli:main"
+og-card-service = "og_card_service.app:main"
 
 [build-system]
 requires = ["uv_build>=0.8.14,<0.9.0"]
