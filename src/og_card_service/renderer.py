@@ -1,9 +1,11 @@
 """Pillow-based Open Graph card rendering engine."""
 
 import io
+import math
 from functools import lru_cache
 
-from PIL import Image, ImageDraw, ImageFont
+from numerize.numerize import numerize
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from og_card_service.models import CardOptions, RepoMetadata
 from og_card_service.themes import THEMES, ThemePalette, get_language_color
@@ -37,15 +39,6 @@ def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | Ima
         except OSError:
             continue
     return ImageFont.load_default()
-
-
-def _format_count(value: int) -> str:
-    """Format large integer counts compactly (e.g. 12400 -> 12.4k)."""
-    if value >= 1_000_000:
-        return f"{value / 1_000_000:.1f}M"
-    if value >= 1_000:
-        return f"{value / 1_000:.1f}k"
-    return str(value)
 
 
 def _text_width(font: ImageFont.FreeTypeFont | ImageFont.ImageFont, text: str) -> int:
@@ -92,6 +85,49 @@ def _wrap_text(
     return lines
 
 
+def _draw_star_icon(
+    draw: ImageDraw.ImageDraw,
+    cx: float,
+    cy: float,
+    radius: float,
+    fill: tuple[int, int, int, int],
+) -> None:
+    """Draw a crisp 5-point star icon."""
+    points: list[tuple[float, float]] = []
+    inner_r = radius * 0.42
+    for i in range(10):
+        angle = math.radians(-90 + i * 36)
+        r = radius if i % 2 == 0 else inner_r
+        points.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+    draw.polygon(points, fill=fill)
+
+
+def _draw_fork_icon(
+    draw: ImageDraw.ImageDraw,
+    x: float,
+    y: float,
+    size: float,
+    color: tuple[int, int, int, int],
+) -> None:
+    """Draw a clean Git fork vector icon."""
+    r = 2.6
+    left_x = x + size * 0.25
+    right_x = x + size * 0.75
+    mid_x = x + size * 0.5
+    top_y = y + 3
+    mid_y = y + size * 0.52
+    bot_y = y + size - 3
+
+    draw.line(
+        [(left_x, top_y), (left_x, mid_y), (mid_x, mid_y), (mid_x, bot_y)],
+        fill=color,
+        width=2,
+    )
+    draw.line([(right_x, top_y), (right_x, mid_y), (mid_x, mid_y)], fill=color, width=2)
+    for px, py in ((left_x, top_y), (right_x, top_y), (mid_x, bot_y)):
+        draw.ellipse((px - r, py - r, px + r, py + r), fill=color)
+
+
 def _build_avatar(
     avatar_bytes: bytes | None,
     owner: str,
@@ -101,8 +137,11 @@ def _build_avatar(
     """Create a circular anti-aliased avatar or a monogram fallback."""
     if avatar_bytes:
         try:
-            img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
-            img = img.resize((size, size), Image.Resampling.LANCZOS)
+            img = ImageOps.fit(
+                Image.open(io.BytesIO(avatar_bytes)).convert("RGBA"),
+                (size, size),
+                method=Image.Resampling.LANCZOS,
+            )
         except Exception:
             img = None
     else:
@@ -166,10 +205,10 @@ class CardRenderer:
             width=2,
         )
 
-        # Top accent strip inside card
+        # Top accent strip inside card (inset to respect rounded corners)
         draw.rounded_rectangle(
-            [CARD_MARGIN + 2, CARD_MARGIN + 2, CARD_WIDTH - CARD_MARGIN - 2, CARD_MARGIN + 10],
-            radius=4,
+            [CARD_MARGIN + 28, CARD_MARGIN + 2, CARD_WIDTH - CARD_MARGIN - 28, CARD_MARGIN + 7],
+            radius=3,
             fill=(*palette.accent, 255),
         )
 
@@ -283,11 +322,27 @@ class CardRenderer:
             )
             stat_x += _text_width(font_stat, repo.language) + 40
 
-        stars_label = f"★ {_format_count(repo.stars)}"
+        _draw_star_icon(
+            draw,
+            cx=stat_x + 9,
+            cy=footer_y + 14,
+            radius=10,
+            fill=(*palette.text_muted, 255),
+        )
+        stat_x += 26
+        stars_label = numerize(repo.stars, 1)
         draw.text((stat_x, footer_y), stars_label, fill=(*palette.text_muted, 255), font=font_stat)
-        stat_x += _text_width(font_stat, stars_label) + 40
+        stat_x += _text_width(font_stat, stars_label) + 38
 
-        forks_label = f"⑂ {_format_count(repo.forks)}"
+        _draw_fork_icon(
+            draw,
+            x=stat_x,
+            y=footer_y + 3,
+            size=22,
+            color=(*palette.text_muted, 255),
+        )
+        stat_x += 26
+        forks_label = numerize(repo.forks, 1)
         draw.text((stat_x, footer_y), forks_label, fill=(*palette.text_muted, 255), font=font_stat)
         stat_x += _text_width(font_stat, forks_label) + 40
 
