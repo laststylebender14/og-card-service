@@ -5,6 +5,7 @@ import math
 import textwrap
 from functools import lru_cache
 
+from font_roboto import Roboto, RobotoBold
 from numerize.numerize import numerize
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
@@ -14,24 +15,8 @@ W, H, M = 1200, 630, 40
 
 
 @lru_cache(maxsize=16)
-def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    paths = (
-        [
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        ]
-        if bold
-        else [
-            "/System/Library/Fonts/Supplemental/Arial.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
-    )
-    for p in paths:
-        try:
-            return ImageFont.truetype(p, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(RobotoBold if bold else Roboto, size)
 
 
 def _avatar(
